@@ -108,8 +108,10 @@ html, body {
   display: block;
   border-radius: 4px;
   image-rendering: pixelated;
-  max-width: 100%;
-  max-height: calc(100vh - 220px);
+  max-width: min(560px, 100%);
+  max-height: calc(100vh - 200px);
+  width: auto;
+  height: auto;
 }
 
 .canvas-info {

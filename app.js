@@ -29,19 +29,7 @@ let activeGlyphId = null;
 const canvas = document.getElementById('glyphCanvas');
 const ctx    = canvas.getContext('2d');
 
-function initGrid(preserveData) {
-  const oldGrid = grid;
-  const oldCols = COLS, oldRows = ROWS;
-  grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-
-  if (preserveData && oldGrid.length) {
-    const minR = Math.min(ROWS, oldRows);
-    const minC = Math.min(COLS, oldCols);
-    for (let r = 0; r < minR; r++)
-      for (let c = 0; c < minC; c++)
-        grid[r][c] = oldGrid[r][c] || null;
-  }
-
+function recalcCanvas() {
   CELL = COLS <= 5  ? 40
        : COLS <= 7  ? 36
        : COLS <= 9  ? 30
@@ -54,11 +42,31 @@ function initGrid(preserveData) {
   const H = ROWS * (CELL + GAP) - GAP;
   canvas.width  = W;
   canvas.height = H;
-  canvas.style.maxWidth  = Math.min(W, 560) + 'px';
-  canvas.style.maxHeight = Math.min(H, 560) + 'px';
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  canvas.style.maxWidth  = '';
+  canvas.style.maxHeight = '';
 
   document.getElementById('gridLabel').textContent = `${COLS}×${ROWS}`;
   document.getElementById('dotTotal').textContent  = ROWS * COLS;
+}
+
+function initGrid(preserveData) {
+  const oldGrid = preserveData ? grid.map(r => [...r]) : [];
+  const oldCols = preserveData ? (grid[0]?.length || 0) : 0;
+  const oldRows = preserveData ? grid.length : 0;
+
+  recalcCanvas();
+  grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+
+  if (preserveData && oldGrid.length) {
+    const minR = Math.min(ROWS, oldRows);
+    const minC = Math.min(COLS, oldCols);
+    for (let r = 0; r < minR; r++)
+      for (let c = 0; c < minC; c++)
+        grid[r][c] = oldGrid[r][c] || null;
+  }
+
   draw(); updateStats(); updateJSON();
 }
 
@@ -172,7 +180,8 @@ function flipV() { grid = [...grid].reverse(); draw(); updateJSON(); }
 
 function changeSize() {
   COLS = ROWS = parseInt(document.getElementById('gridSize').value);
-  initGrid(true);
+  grid = [];
+  initGrid(false);
 }
 
 function updateBrightness(val) {
@@ -292,20 +301,13 @@ function loadGlyph(id) {
   document.getElementById('category').value  = g.category;
   COLS = g.cols; ROWS = g.rows;
   document.getElementById('gridSize').value = String(COLS);
-  CELL = COLS<=5?40:COLS<=7?36:COLS<=9?30:COLS<=12?26:COLS<=16?20:COLS<=20?16:12;
-  GAP  = COLS <= 16 ? 3 : 2;
-  canvas.width  = COLS * (CELL + GAP) - GAP;
-  canvas.height = ROWS * (CELL + GAP) - GAP;
-  canvas.style.maxWidth  = Math.min(canvas.width,  560) + 'px';
-  canvas.style.maxHeight = Math.min(canvas.height, 560) + 'px';
+  recalcCanvas();
   grid = g.data.map(row => row.map(v => {
     if (v === null) return null;
     if (typeof v === 'number') return PALETTE[v]?.hex || null;
     return v.custom || null;
   }));
   draw(); updateStats();
-  document.getElementById('gridLabel').textContent = `${COLS}×${ROWS}`;
-  document.getElementById('dotTotal').textContent  = ROWS * COLS;
   updateJSON();
   renderLibrary();
 }
