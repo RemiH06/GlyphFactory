@@ -17,12 +17,12 @@ const PALETTE = [
 let COLS = 12, ROWS = 12;
 let CELL = 24, GAP = 3;
 let grid = [];
-let currentColor     = PALETTE[0].hex;
-let currentColorName = PALETTE[0].name;
+let currentColor      = PALETTE[0].hex;
+let currentColorName  = PALETTE[0].name;
 let currentBrightness = 1.0;
-let mode = 'paint';
-let isDown = false;
-let library = {};
+let mode     = 'paint';
+let isDown   = false;
+let library  = {};
 let activeGlyphId = null;
 
 // ── Canvas ───────────────────────────────────────────────────────────────────
@@ -70,40 +70,40 @@ function initGrid(preserveData) {
   draw(); updateStats(); updateJSON();
 }
 
+// ── Dibujo — círculos ─────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const x   = c * (CELL + GAP);
       const y   = r * (CELL + GAP);
+      const cx2 = x + CELL / 2;
+      const cy2 = y + CELL / 2;
+      const rad = CELL / 2;
       const val = grid[r][c];
+
       if (val) {
         ctx.fillStyle = val;
-        rr(ctx, x, y, CELL, CELL, 3);
+        ctx.beginPath();
+        ctx.arc(cx2, cy2, rad, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.06)';
-        rr(ctx, x, y, CELL, CELL * 0.4, 3);
+        // brillo sutil
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.beginPath();
+        ctx.arc(cx2, cy2 - rad * 0.2, rad * 0.45, 0, Math.PI * 2);
         ctx.fill();
       } else {
         ctx.fillStyle = '#111';
-        rr(ctx, x, y, CELL, CELL, 3);
+        ctx.beginPath();
+        ctx.arc(cx2, cy2, rad, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#161616';
-        rr(ctx, x + 1, y + 1, CELL - 2, CELL - 2, 2);
+        ctx.fillStyle = '#181818';
+        ctx.beginPath();
+        ctx.arc(cx2, cy2, rad - 1, 0, Math.PI * 2);
         ctx.fill();
       }
     }
   }
-}
-
-function rr(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y,     x + w,     y + r, r);
-  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h); ctx.arcTo(x,     y + h, x,         y + h - r, r);
-  ctx.lineTo(x, y + r); ctx.arcTo(x,     y,     x + r,     y, r);
-  ctx.closePath();
 }
 
 // ── Interacción ──────────────────────────────────────────────────────────────
@@ -189,6 +189,15 @@ function updateBrightness(val) {
   document.getElementById('brightnessVal').textContent = val + '%';
 }
 
+function applyBrightness(hex, b) {
+  if (b >= 1) return hex;
+  const r  = parseInt(hex.slice(1, 3), 16);
+  const g  = parseInt(hex.slice(3, 5), 16);
+  const bl = parseInt(hex.slice(5, 7), 16);
+  const mix = ch => Math.round(ch * b + 0x11 * (1 - b));
+  return '#' + [mix(r), mix(g), mix(bl)].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
 // ── Importar imagen → average pooling → paleta ────────────────────────────────
 function importImage() {
   document.getElementById('imageFile').click();
@@ -208,30 +217,24 @@ function handleImageImport(e) {
 }
 
 function poolImageToGrid(img) {
-  // Canvas offscreen del tamaño original
-  const offscreen   = document.createElement('canvas');
-  offscreen.width   = img.width;
-  offscreen.height  = img.height;
-  const offCtx      = offscreen.getContext('2d');
+  const offscreen  = document.createElement('canvas');
+  offscreen.width  = img.width;
+  offscreen.height = img.height;
+  const offCtx     = offscreen.getContext('2d');
   offCtx.drawImage(img, 0, 0);
 
-  const threshold   = parseInt(document.getElementById('darkThreshold').value);
-  const pixelData   = offCtx.getImageData(0, 0, img.width, img.height).data;
-
-  // Tamaño de cada bloque de la imagen que mapea a 1 celda
-  const blockW = img.width  / COLS;
-  const blockH = img.height / ROWS;
+  const threshold = parseInt(document.getElementById('darkThreshold').value);
+  const pixelData = offCtx.getImageData(0, 0, img.width, img.height).data;
+  const blockW    = img.width  / COLS;
+  const blockH    = img.height / ROWS;
 
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
       const { r, g, b, a } = sampleBlock(pixelData, img.width, col, row, blockW, blockH);
-
-      // Píxel muy transparente o muy oscuro → celda vacía
       if (a < 30 || (r + g + b) < threshold * 3) {
         grid[row][col] = null;
         continue;
       }
-
       grid[row][col] = closestPaletteColor(r, g, b);
     }
   }
@@ -241,55 +244,33 @@ function poolImageToGrid(img) {
 }
 
 function sampleBlock(data, imgWidth, col, row, blockW, blockH) {
-  // Average pooling — promedia todos los píxeles del bloque
   let rSum = 0, gSum = 0, bSum = 0, aSum = 0, count = 0;
-
   const x0 = Math.floor(col * blockW);
   const y0 = Math.floor(row * blockH);
   const x1 = Math.min(Math.ceil((col + 1) * blockW), imgWidth);
   const y1 = Math.min(Math.ceil((row + 1) * blockH), Math.floor(data.length / 4 / imgWidth));
-
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const i = (y * imgWidth + x) * 4;
-      rSum += data[i];
-      gSum += data[i + 1];
-      bSum += data[i + 2];
-      aSum += data[i + 3];
+      rSum += data[i]; gSum += data[i + 1]; bSum += data[i + 2]; aSum += data[i + 3];
       count++;
     }
   }
-
   return count === 0
     ? { r: 0, g: 0, b: 0, a: 0 }
     : { r: rSum / count, g: gSum / count, b: bSum / count, a: aSum / count };
 }
 
 function closestPaletteColor(r, g, b) {
-  let minDist = Infinity;
-  let closest = PALETTE[0].hex;
-
+  let minDist = Infinity, closest = PALETTE[0].hex;
   PALETTE.forEach(col => {
     const pr = parseInt(col.hex.slice(1, 3), 16);
     const pg = parseInt(col.hex.slice(3, 5), 16);
     const pb = parseInt(col.hex.slice(5, 7), 16);
-    // Distancia euclidiana en RGB con pesos perceptuales
-    const dist = 0.299 * (r - pr) ** 2
-               + 0.587 * (g - pg) ** 2
-               + 0.114 * (b - pb) ** 2;
+    const dist = 0.299 * (r - pr) ** 2 + 0.587 * (g - pg) ** 2 + 0.114 * (b - pb) ** 2;
     if (dist < minDist) { minDist = dist; closest = col.hex; }
   });
-
   return closest;
-}
-
-function applyBrightness(hex, b) {
-  if (b >= 1) return hex;
-  const r  = parseInt(hex.slice(1, 3), 16);
-  const g  = parseInt(hex.slice(3, 5), 16);
-  const bl = parseInt(hex.slice(5, 7), 16);
-  const mix = ch => Math.round(ch * b + 0x11 * (1 - b));
-  return '#' + [mix(r), mix(g), mix(bl)].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
 // ── Paleta de colores ─────────────────────────────────────────────────────────
@@ -305,9 +286,9 @@ function buildPalette() {
       currentColorName = col.name;
       document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
       dot.classList.add('selected');
-      document.getElementById('colorName').textContent          = `${col.name} · ${col.hex}`;
-      document.getElementById('currentColorLabel').textContent  = col.name;
-      document.getElementById('currentColorLabel').style.color  = col.hex;
+      document.getElementById('colorName').textContent         = `${col.name} · ${col.hex}`;
+      document.getElementById('currentColorLabel').textContent = col.name;
+      document.getElementById('currentColorLabel').style.color = col.hex;
       if (mode === 'erase') setMode('paint');
     });
     container.appendChild(dot);
@@ -338,6 +319,7 @@ function updateJSON() {
   renderPreviews(data);
 }
 
+// ── Previews — círculos ───────────────────────────────────────────────────────
 function renderPreviews(data) {
   const strip = document.getElementById('previewStrip');
   strip.innerHTML = '';
@@ -347,24 +329,94 @@ function renderPreviews(data) {
     const c2  = document.createElement('canvas');
     c2.width  = COLS * (sz + gap) - gap;
     c2.height = ROWS * (sz + gap) - gap;
-    c2.style.imageRendering = 'pixelated';
     const cx  = c2.getContext('2d');
-    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-      const val = data[r][c];
-      cx.fillStyle = val !== null
-        ? (typeof val === 'number' ? PALETTE[val].hex : val.custom)
-        : '#141414';
-      cx.fillRect(c * (sz + gap), r * (sz + gap), sz, sz);
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const val = data[r][c];
+        const px  = c * (sz + gap) + sz / 2;
+        const py  = r * (sz + gap) + sz / 2;
+        cx.fillStyle = val !== null
+          ? (typeof val === 'number' ? PALETTE[val].hex : val.custom)
+          : '#141414';
+        cx.beginPath();
+        cx.arc(px, py, sz / 2, 0, Math.PI * 2);
+        cx.fill();
+      }
     }
     const wrap = document.createElement('div');
     wrap.className = 'preview-item';
     const lbl = document.createElement('div');
-    lbl.className = 'preview-label';
+    lbl.className   = 'preview-label';
     lbl.textContent = `${scale}×`;
     wrap.appendChild(c2);
     wrap.appendChild(lbl);
     strip.appendChild(wrap);
   });
+}
+
+// ── Biblioteca ────────────────────────────────────────────────────────────────
+function renderLibrary() {
+  const grid2   = document.getElementById('glyphGrid');
+  const filter  = document.getElementById('filterCat').value;
+  const entries = Object.values(library).filter(g => !filter || g.category === filter);
+
+  if (!entries.length) {
+    grid2.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;font-family:'Space Mono',monospace;font-size:10px;color:var(--text3)">${filter ? 'sin resultados' : 'vacío — empieza a dibujar'}</div>`;
+    return;
+  }
+
+  grid2.innerHTML = '';
+  entries.sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
+    const card = document.createElement('div');
+    card.className = 'glyph-card' + (g.id === activeGlyphId ? ' active' : '');
+    card.onclick = () => loadGlyph(g.id);
+
+    const mini = makeMiniCanvas(g, 40);
+    const name = document.createElement('div');
+    name.className   = 'glyph-name';
+    name.textContent = g.name;
+    const meta = document.createElement('div');
+    meta.className   = 'glyph-meta';
+    meta.textContent = `${g.cols}×${g.rows}`;
+    const del = document.createElement('button');
+    del.className     = 'btn danger';
+    del.style.cssText = 'padding:2px 6px;font-size:8px;margin-top:2px';
+    del.textContent   = '✕';
+    del.onclick = e => deleteGlyph(g.id, e);
+
+    card.appendChild(mini);
+    card.appendChild(name);
+    card.appendChild(meta);
+    card.appendChild(del);
+    grid2.appendChild(card);
+  });
+}
+
+// ── Mini canvas — círculos ────────────────────────────────────────────────────
+function makeMiniCanvas(g, maxSize) {
+  const sz  = Math.max(1, Math.floor(maxSize / Math.max(g.cols, g.rows)));
+  const gap = sz > 2 ? 1 : 0;
+  const c   = document.createElement('canvas');
+  c.width   = g.cols * (sz + gap) - gap;
+  c.height  = g.rows * (sz + gap) - gap;
+  const cx  = c.getContext('2d');
+  g.data.forEach((row, r) => row.forEach((val, col) => {
+    const px = col * (sz + gap) + sz / 2;
+    const py = r   * (sz + gap) + sz / 2;
+    cx.fillStyle = val !== null
+      ? (typeof val === 'number' ? (g.palette?.[val] || PALETTE[val]?.hex || '#fff') : val.custom || '#fff')
+      : '#141414';
+    cx.beginPath();
+    cx.arc(px, py, sz / 2, 0, Math.PI * 2);
+    cx.fill();
+  }));
+  return c;
+}
+
+function updateLibCount() {
+  const n = Object.keys(library).length;
+  document.getElementById('savedCount').textContent = n;
+  document.getElementById('libCount').textContent   = n;
 }
 
 // ── Guardar / cargar ──────────────────────────────────────────────────────────
@@ -424,67 +476,6 @@ function deleteGlyph(id, e) {
   showNotif('glifo eliminado');
 }
 
-// ── Biblioteca ────────────────────────────────────────────────────────────────
-function renderLibrary() {
-  const grid2   = document.getElementById('glyphGrid');
-  const filter  = document.getElementById('filterCat').value;
-  const entries = Object.values(library).filter(g => !filter || g.category === filter);
-
-  if (!entries.length) {
-    grid2.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px;font-family:'Space Mono',monospace;font-size:10px;color:var(--text3)">${filter ? 'sin resultados' : 'vacío — empieza a dibujar'}</div>`;
-    return;
-  }
-
-  grid2.innerHTML = '';
-  entries.sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
-    const card = document.createElement('div');
-    card.className = 'glyph-card' + (g.id === activeGlyphId ? ' active' : '');
-    card.onclick = () => loadGlyph(g.id);
-
-    const mini = makeMiniCanvas(g, 40);
-    const name = document.createElement('div');
-    name.className   = 'glyph-name';
-    name.textContent = g.name;
-    const meta = document.createElement('div');
-    meta.className   = 'glyph-meta';
-    meta.textContent = `${g.cols}×${g.rows}`;
-    const del  = document.createElement('button');
-    del.className    = 'btn danger';
-    del.style.cssText = 'padding:2px 6px;font-size:8px;margin-top:2px';
-    del.textContent  = '✕';
-    del.onclick = e => deleteGlyph(g.id, e);
-
-    card.appendChild(mini);
-    card.appendChild(name);
-    card.appendChild(meta);
-    card.appendChild(del);
-    grid2.appendChild(card);
-  });
-}
-
-function makeMiniCanvas(g, maxSize) {
-  const sz  = Math.max(1, Math.floor(maxSize / Math.max(g.cols, g.rows)));
-  const gap = sz > 2 ? 1 : 0;
-  const c   = document.createElement('canvas');
-  c.width   = g.cols * (sz + gap) - gap;
-  c.height  = g.rows * (sz + gap) - gap;
-  c.style.imageRendering = 'pixelated';
-  const cx  = c.getContext('2d');
-  g.data.forEach((row, r) => row.forEach((val, col) => {
-    cx.fillStyle = val !== null
-      ? (typeof val === 'number' ? (g.palette?.[val] || PALETTE[val]?.hex || '#fff') : val.custom || '#fff')
-      : '#141414';
-    cx.fillRect(col * (sz + gap), r * (sz + gap), sz, sz);
-  }));
-  return c;
-}
-
-function updateLibCount() {
-  const n = Object.keys(library).length;
-  document.getElementById('savedCount').textContent = n;
-  document.getElementById('libCount').textContent   = n;
-}
-
 // ── Export / Import ───────────────────────────────────────────────────────────
 function exportLibrary() {
   const payload = {
@@ -508,7 +499,7 @@ function exportSingle() {
 function copyJSON() {
   navigator.clipboard.writeText(document.getElementById('jsonOut').value)
     .then(()  => showNotif('JSON copiado'))
-    .catch(()  => showNotif('error al copiar', true));
+    .catch(() => showNotif('error al copiar', true));
 }
 
 function importLibrary() {
