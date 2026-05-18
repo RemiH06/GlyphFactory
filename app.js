@@ -189,6 +189,100 @@ function updateBrightness(val) {
   document.getElementById('brightnessVal').textContent = val + '%';
 }
 
+// ── Importar imagen → average pooling → paleta ────────────────────────────────
+function importImage() {
+  document.getElementById('imageFile').click();
+}
+
+function handleImageImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const img = new Image();
+    img.onload = () => poolImageToGrid(img);
+    img.src = evt.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+
+function poolImageToGrid(img) {
+  // Canvas offscreen del tamaño original
+  const offscreen   = document.createElement('canvas');
+  offscreen.width   = img.width;
+  offscreen.height  = img.height;
+  const offCtx      = offscreen.getContext('2d');
+  offCtx.drawImage(img, 0, 0);
+
+  const threshold   = parseInt(document.getElementById('darkThreshold').value);
+  const pixelData   = offCtx.getImageData(0, 0, img.width, img.height).data;
+
+  // Tamaño de cada bloque de la imagen que mapea a 1 celda
+  const blockW = img.width  / COLS;
+  const blockH = img.height / ROWS;
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const { r, g, b, a } = sampleBlock(pixelData, img.width, col, row, blockW, blockH);
+
+      // Píxel muy transparente o muy oscuro → celda vacía
+      if (a < 30 || (r + g + b) < threshold * 3) {
+        grid[row][col] = null;
+        continue;
+      }
+
+      grid[row][col] = closestPaletteColor(r, g, b);
+    }
+  }
+
+  draw(); updateStats(); updateJSON();
+  showNotif('imagen importada');
+}
+
+function sampleBlock(data, imgWidth, col, row, blockW, blockH) {
+  // Average pooling — promedia todos los píxeles del bloque
+  let rSum = 0, gSum = 0, bSum = 0, aSum = 0, count = 0;
+
+  const x0 = Math.floor(col * blockW);
+  const y0 = Math.floor(row * blockH);
+  const x1 = Math.min(Math.ceil((col + 1) * blockW), imgWidth);
+  const y1 = Math.min(Math.ceil((row + 1) * blockH), Math.floor(data.length / 4 / imgWidth));
+
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * imgWidth + x) * 4;
+      rSum += data[i];
+      gSum += data[i + 1];
+      bSum += data[i + 2];
+      aSum += data[i + 3];
+      count++;
+    }
+  }
+
+  return count === 0
+    ? { r: 0, g: 0, b: 0, a: 0 }
+    : { r: rSum / count, g: gSum / count, b: bSum / count, a: aSum / count };
+}
+
+function closestPaletteColor(r, g, b) {
+  let minDist = Infinity;
+  let closest = PALETTE[0].hex;
+
+  PALETTE.forEach(col => {
+    const pr = parseInt(col.hex.slice(1, 3), 16);
+    const pg = parseInt(col.hex.slice(3, 5), 16);
+    const pb = parseInt(col.hex.slice(5, 7), 16);
+    // Distancia euclidiana en RGB con pesos perceptuales
+    const dist = 0.299 * (r - pr) ** 2
+               + 0.587 * (g - pg) ** 2
+               + 0.114 * (b - pb) ** 2;
+    if (dist < minDist) { minDist = dist; closest = col.hex; }
+  });
+
+  return closest;
+}
+
 function applyBrightness(hex, b) {
   if (b >= 1) return hex;
   const r  = parseInt(hex.slice(1, 3), 16);
