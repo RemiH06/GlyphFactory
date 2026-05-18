@@ -13,11 +13,11 @@
 
 ## General Description
 
-GlyphFactory is a standalone browser-based dot matrix editor for designing pixel-art style glyphs (numbers, letters, outfit icons, weather symbols, and UI elements) following the Nothing Phone Glyph Matrix aesthetic. Built as a support tool for my [**Meteoroglyph**](https://github.com/RemiH06/Meteoroglyph)** Android app project.
+GlyphFactory is a standalone browser-based dot matrix editor for designing pixel-art style glyphs (numbers, letters, outfit icons, weather symbols, and UI elements) following the Nothing Phone Glyph Matrix aesthetic. Built as a support tool for my [**Meteoroglyph**](https://github.com/RemiH06/Meteoroglyph) Android app project.
 
 Glyphs are designed on customizable grids (5×5 up to 25×25), saved to a local library, and exported as structured JSON for direct integration into the app.
 
-You can use it by clicking here:
+You can use it by clicking here: https://remih06.github.io/GlyphFactory/
 
 ```diff
 + No installation required. Open index.html with a local server and start designing
